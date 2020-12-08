@@ -1,0 +1,27 @@
+- name: Take XML ARF In and Output CSV
+  hosts: localhost
+  connection: local
+  vars:
+    ansible_ssh_user: bmullinix
+    max_file_size_mb: 50
+  tasks:
+    
+    - name: Delete local output directory if it exists
+      file:
+        path: "{{ playbook_dir }}/files/oscap_output"
+        state: absent
+    
+    - name: Create local oscap output raw directory
+      file:
+        path: "{{ playbook_dir }}/files/oscap_output/raw"
+        state: directory
+        mode: '0777'
+
+    - name: Transforming OpenSCAP output to findings and summary
+      import_role:
+        name: report_parsing_role
+      vars:
+        my_host_name: "my_host.example.com"
+        my_host_ip_address: "127.0.0.1"
+        openscap_input_xml_file: "{{ playbook_dir }}/files/example_OpenSCAP.xml"
+        csv_final_output_file: "{{playbook_dir}}/files/oscap_output/openscap_output.csv"

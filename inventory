@@ -1,0 +1,2 @@
+[all]
+satellite ansible_host=192.x.x.x

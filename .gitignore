@@ -1,0 +1,4 @@
+*.pyc
+oscap_output/
+*.csv
+example_OpenSCAP.xml

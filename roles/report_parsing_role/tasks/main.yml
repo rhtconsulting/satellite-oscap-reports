@@ -1,0 +1,58 @@
+---
+
+- name: Check if the output file exists
+  stat:
+    path: "{{ csv_final_output_file }}"
+  register: stat_result
+
+- name: Create the initial column headers for the csv
+  block:
+    - name: Create variable to hold the column headers
+      set_fact:
+        column_headers_for_csv: "Host,IP Address,Id,Group Title,Version,Description,DISA Id,Mitre Id,Severity,Passed"
+ 
+    - name: Save the output to a csv
+      shell: echo "{{ column_headers_for_csv }}" > {{ csv_final_output_file }}
+  when: stat_result.stat.exists == false
+
+# tasks file for satellite_openscap_reports
+- name: Get the size of the file.  Lets limit what can be parsed
+  stat:
+    path:  "{{ openscap_input_xml_file  }}"
+  register: openscap_file_info
+
+- name: Get the size of the file in megabytes
+  set_fact:
+    file_size_mb: "{{ openscap_file_info.stat.size/1000000 }}"
+
+- name: Run this block to output a line if the xml file size is over the max size in MB
+  block:
+    - name: Output a line for {{my_host_name}} if the xml file is too large
+      set_fact:
+        output_too_big: "{{ my_host_name }}, {{my_host_ip_address}},**The file size is {{ file_size_mb }}} MB.  Could not parse because it is too large.***"
+
+    - name: Save the output to a csv
+      shell: echo -e "{{ output_too_big }}" >> {{ csv_final_output_file }}         
+  when: file_size_mb | int  > max_file_size_mb
+
+- name: Parse the OpenSCAP XML file and Save it to the final CSV
+  block:
+    - name: Parse the OpenSCAP XML
+      custom_openscap_xml:
+        path: "{{ openscap_input_xml_file }}"
+      register: output
+    
+    - name: Save the facts by populating the output.csv.j2 template
+      template:
+        src: "output.csv.j2"
+        dest: "{{ csv_output_no_column_header }}"
+
+    - name: Move the data from the openscap_data_output.csv to the
+      shell: "cat {{ csv_output_no_column_header }}
+           >> {{ csv_final_output_file }}"
+
+    - name: Remove {{ my_host_name }} temp data file
+      file:
+        path: "{{ csv_output_no_column_header }}"
+        state: absent
+  when: file_size_mb | int  <= max_file_size_mb

@@ -1,0 +1,9 @@
+---
+# defaults file for satellite_openscap_reports
+
+openscap_input_xml_file: "{{ playbook_dir }}/my_host_openscap_report.xml"
+max_file_size_mb: 50
+my_host_name: "localhost.example.com"
+my_host_ip_address: "x.x.x.x"
+csv_output_no_column_header: "{{ playbook_dir }}/files/oscap_output/data_{{my_host_name}}.csv"
+csv_final_output_file: "{{playbook_dir }}/files/oscap_output/openscap_output.csv"

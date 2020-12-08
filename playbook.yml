@@ -1,0 +1,61 @@
+- name: Take XML ARF In and Output CSV
+  hosts: all
+  become: true
+  vars:
+    ansible_ssh_user: bmullinix
+    max_file_size_mb: 50
+  tasks:
+    - name: Get a list of hosts from Satellite and Capsule server
+      command: >
+        /bin/hammer host list
+      register: hosts_list
+
+    - fail: msg="The variable 'hosts_list' is empty"
+      when: 
+          hosts_list is not defined or
+          hosts_list.stdout_lines is not defined or
+          hosts_list.stdout_lines | length < 4
+
+    - name: Set Host Column List
+      set_fact:
+        hosts_columns: "{{ hosts_list.stdout_lines[1].split('|') }}"
+
+    - name: Delete local output directory if it exists
+      file:
+        path: "{{ playbook_dir }}/files/oscap_output"
+        state: absent
+      delegate_to: 127.0.0.1
+    
+    - name: Create local oscap output raw directory
+      file:
+        path: "{{ playbook_dir }}/files/oscap_output/raw"
+        state: directory
+        mode: '0777'
+      delegate_to: 127.0.0.1
+
+    - name: Create directory to download scap report
+      file:
+        path: /root/oscap/      
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      run_once: true
+    
+    - name: Create the initial column headers for the csv
+      set_fact:
+        column_headers_for_csv: "Host,IP Address,Id,Group Title,Version,Description,DISA Id,Mitre Id,Severity,Passed"
+      delegate_to: 127.0.0.1
+      run_once: true
+ 
+    - name: Save the output to a csv
+      shell: echo -e "{{ column_headers_for_csv }}" > {{playbook_dir}}/files/oscap_output/openscap_output.csv
+      delegate_to: 127.0.0.1
+      run_once: true
+
+    - name: Perform Satellite Tasks for Each Host
+      include_tasks: "tasks/sat-tasks.yml"
+      loop: "{{ hosts_list.stdout_lines }}"
+      loop_control:
+        index_var: my_idx
+      when: my_idx >= 3 

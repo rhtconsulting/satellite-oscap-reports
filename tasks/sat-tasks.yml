@@ -1,0 +1,85 @@
+- name: Create List of Host Columns
+  set_fact:
+    my_host_columns: "{{ item.split('|') }}"
+
+- name: Print My Host Columns
+  debug:
+    var: my_host_columns
+
+- name: Get the Host Name
+  set_fact:
+    my_host_name: "{{ my_host_columns[1].strip() }}"
+
+- name: Get the IP Address
+  set_fact:
+    my_host_ip_address: "{{ my_host_columns[4].strip() }}"
+
+- name: Get the latest report id from {{ my_host_name }}
+  shell: >
+    /bin/hammer --csv arf-report list 
+    --search "host = {{ my_host_name }}" | 
+    grep -vi '^Id' |
+    awk -F, '{print $1}'|
+    sort -nr | 
+    head -n1
+  register: latest_report_id
+
+- name: A report exists for {{ my_host_name }}
+  block:
+
+    - name: Download oscap report from {{ my_host_name }}
+      command: >
+        /bin/hammer arf-report download 
+         --organization "My Organization" --id {{ latest_report_id.stdout }}
+         --path /root/oscap
+      register: host_arf_report
+
+    - name: Retrieve the file name
+      set_fact:
+        host_arf_file: "{{ host_arf_report.stdout | regex_replace('.*?(/.*)', '\\1') }}"
+
+    - name: Get the Host Arf Report File Name
+      set_fact:
+        host_arf_file_name:  "{{ host_arf_file | regex_replace('.*/(.*)','\\1') }}"
+
+    - name: Print the Host Arf Report Results
+      debug:
+        var: host_arf_file
+
+    - name: Copy the file to the ansible host from satellite
+      fetch:
+        src: "{{ host_arf_file }}"
+        dest: "{{ playbook_dir }}/files/oscap_output/raw/"
+        flat: yes
+
+    - name: Delete the file on satellite
+      file:
+        path: "{{ host_arf_file }}"
+        state: absent
+
+    - name: Decompress the XML Open SCAP report
+      shell:
+           "bunzip2 -c {{ playbook_dir }}/files/oscap_output/raw/{{ host_arf_file_name }} > {{ playbook_dir }}/files/oscap_output/{{ my_host_name }}.xml"
+      delegate_to: 127.0.0.1
+
+    - name: Transforming OpenSCAP output to findings and summary
+      import_role:
+        name: report_parsing_role
+      vars:
+        openscap_input_xml_file: "{{ playbook_dir }}/files/oscap_output/{{ my_host_name }}.xml"
+        csv_final_output_file: "{{playbook_dir}}/files/oscap_output/openscap_output.csv"
+      delegate_to: 127.0.0.1
+  when: latest_report_id.stdout != ""
+
+- name: Save the host to a file if no report exists
+  block:
+    - name: Output a line for {{my_host_name}} not having a report
+      set_fact:
+        output_no_report: "{{ my_host_name }}, {{my_host_ip_address}}, ***No Report***"
+      delegate_to: 127.0.0.1
+
+    - name: Save the output to a csv
+      shell: echo -e "{{ output_no_report }}" >> {{playbook_dir}}/files/oscap_output/openscap_output.csv
+      delegate_to: 127.0.0.1
+  when: latest_report_id.stdout == ""
+  
